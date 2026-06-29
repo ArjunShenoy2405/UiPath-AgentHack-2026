@@ -1,0 +1,5 @@
+List of Additional Components Used:
+
+1. Python File - Mock Payer AP - API Server Running Locally.
+
+2. Cloudflare Tunnel - Exposing the locally hosted API to the Internet (http://api.projectarc.site/docs)

@@ -1,0 +1,384 @@
+================================================================
+PROJECTARC — SETUP INSTRUCTIONS FOR JUDGING
+UiPath AgentHack 2026 | Track 1: Maestro Case
+"Payers deny. ARC fights back."
+================================================================
+
+This document provides step-by-step guidance to configure and run
+ProjectARC for evaluation. The solution runs on the UiPath Platform
+(Maestro Case, Agent Builder, Studio, Orchestrator) with a local
+FastAPI mock payer portal that simulates a real insurance payer's
+claims system.
+
+Estimated setup time: 30–45 minutes.
+
+
+----------------------------------------------------------------
+TABLE OF CONTENTS
+----------------------------------------------------------------
+  0.  Prerequisites
+  1.  Get the Project Files
+  2.  Start the Mock Payer API (local)
+  3.  Configure UiPath Orchestrator
+  4.  Import & Publish the Agents (Agent Builder)
+  5.  Import & Publish the RPA Processes (Studio)
+  6.  Import & Configure the Maestro Case
+  7.  Run a Case (Recommended Demo Walkthrough)
+  8.  Test Data Reference
+  9.  Troubleshooting
+
+
+================================================================
+0.  PREREQUISITES
+================================================================
+
+Before you begin, ensure you have:
+
+  • A UiPath Automation Cloud account with access to:
+        - UiPath Maestro
+        - UiPath Agent Builder
+        - UiPath Orchestrator
+  • UiPath Studio (Desktop) installed
+  • A UiPath Assistant / Robot connected to your machine
+        (needed so RPA processes can reach the local mock API —
+         see the localhost note in Section 5)
+  • Python 3.9 or higher installed
+  • An LLM connection configured in Agent Builder (the agents are
+    built to run on Claude)
+
+Project structure (after extracting the project files):
+
+    ProjectARC/
+    ├── mock-api/
+    │   └── mock_payer_api.py        ← the mock payer portal
+    ├── test-data/
+    │   ├── eobs/eobs.json           ← 20 synthetic denied claims
+    │   ├── clinical-notes/...       ← physician notes (Path B)
+    │   └── config/arc_config.json   ← CARC codes, deadlines, routing
+    ├── agents/                      ← agent prompts & schemas
+    ├── rpa/                         ← UiPath Studio processes
+    ├── maestro/                     ← the Maestro Case export
+    └── README.md
+
+
+================================================================
+1.  GET THE PROJECT FILES
+================================================================
+
+  1.1  Clone or download the project repository from GitHub:
+
+           git clone <YOUR_GITHUB_REPO_URL>
+           cd ProjectARC
+
+  1.2  Confirm the folder structure matches the layout above.
+
+
+================================================================
+2.  START THE MOCK PAYER API (LOCAL)
+================================================================
+
+The mock payer API simulates the insurance payer's claims system.
+ProjectARC's RPA processes call it to submit appeals and poll for
+claim outcomes.
+
+  2.1  Open a terminal and navigate to the mock-api folder:
+
+           cd mock-api
+
+  2.2  Install dependencies:
+
+           pip install fastapi uvicorn
+
+  2.3  Start the API:
+
+           uvicorn mock_payer_api:app --reload --port 8000
+
+  2.4  Confirm it is running. In a browser, open:
+
+           http://localhost:8000
+
+       You should see a JSON response with the system name and a
+       list of endpoints.
+
+  2.5  (Optional) Explore the interactive API docs at:
+
+           http://localhost:8000/docs
+
+       Leave this terminal running for the entire evaluation —
+       the API must stay live while cases run.
+
+  KEY ENDPOINTS (for reference):
+      GET  /claim/{claim_id}/status   → poll a claim's status
+      POST /claim/{claim_id}/appeal   → submit an appeal/resubmission
+      POST /claim/status/override     → force a status (demo control)
+      GET  /claims/all                → dashboard of all claims
+
+
+================================================================
+3.  CONFIGURE UIPATH ORCHESTRATOR
+================================================================
+
+  3.1  Log in to UiPath Automation Cloud and open Orchestrator.
+
+  3.2  Confirm you have a folder/workspace to publish into
+       (e.g. your personal workspace or a shared folder). Note its
+       name — you will select it when publishing processes and
+       configuring the case.
+
+  3.3  Confirm a Robot is connected to your machine
+       (Orchestrator → Tenant → Robots). This matters because the
+       RPA processes call the local mock API; the executing robot
+       must be able to reach localhost (see Section 5 note).
+
+  3.4  (If used) Add any required Assets, e.g.:
+           - PayerAPI_BaseURL = http://localhost:8000
+
+
+================================================================
+4.  IMPORT & PUBLISH THE AGENTS (AGENT BUILDER)
+================================================================
+
+ProjectARC uses FIVE agents. For each one, confirm its system
+prompt, model, and input/output schema, then publish.
+
+  4.1  Open UiPath Agent Builder.
+
+  4.2  For each agent below, create/import it, confirm the LLM
+       connection (Claude), set temperature as noted, then publish:
+
+       a) Denial Classification Agent
+          - Reads EOB + CARC code → outputs the denial path (A/B/D/E)
+          - Temperature: 0 (deterministic)
+
+       b) Coding Correction Agent  (Path A)
+          - Proposes corrected CPT/ICD codes
+          - Temperature: 0
+
+       c) Clinical Evidence Agent  (Path B)
+          - Drafts the medical-necessity appeal letter
+          - Temperature: ~0.3
+
+       d) Patient Outreach Agent  (Path D)
+          - Drafts the HIPAA-compliant patient outreach message
+          - Temperature: ~0.3
+
+       e) Billing Review Agent  (Path E)
+          - Diagnoses true duplicate vs. technical error;
+            decides requires_resubmission
+          - Temperature: 0
+
+  4.3  After publishing, confirm each agent appears as available to
+       Maestro (it must be published, not just saved).
+
+  NOTE: The agents' prompts and input/output schemas are included
+  in the /agents folder of the repository for reference.
+
+
+================================================================
+5.  IMPORT & PUBLISH THE RPA PROCESSES (STUDIO)
+================================================================
+
+ProjectARC uses UiPath Studio processes for deterministic actions.
+
+  5.1  Open each process in the /rpa folder with UiPath Studio:
+           - SubmitToPayer        (POST /claim/{id}/appeal)
+           - Appeal Status Polling (GET /claim/{id}/status)
+           - Draft Outreach        (Path D — saves mail draft)
+
+  5.2  In each process, confirm the API endpoint points to your
+       running mock API base URL (default: http://localhost:8000).
+
+  5.3  Publish each process to the SAME Orchestrator folder you
+       noted in Section 3.
+
+  >>> IMPORTANT — LOCALHOST REACHABILITY <<<
+  The mock API runs on your local machine (localhost:8000). If the
+  RPA process is executed by a CLOUD-hosted robot, it will NOT be
+  able to reach your localhost and the API calls will fail.
+
+  Choose ONE of the following:
+     (a) Run the processes via a robot installed on the SAME
+         machine that is running the mock API (recommended), OR
+     (b) Expose the local API publicly using a tunneling tool
+         (e.g. ngrok: `ngrok http 8000`) and update the endpoint
+         in each Studio process to the public URL.
+
+
+================================================================
+6.  IMPORT & CONFIGURE THE MAESTRO CASE
+================================================================
+
+  6.1  Open UiPath Maestro and import the case from the /maestro
+       folder (the ARC_DeniedClaim case definition).
+
+  6.2  Confirm the overall flow is present:
+           Claim Denied → Denial Classification Agent
+           → Denial Path Router → Paths A / B / D / E
+
+  6.3  Verify the AGENT nodes are bound to your published agents
+       (Section 4). Re-select from the dropdown if needed.
+
+  6.4  Verify the RPA / External Task nodes are bound to your
+       published Studio processes (Section 5).
+
+  6.5  Verify the HUMAN TASK nodes are linked to their Task Catalog
+       forms in Orchestrator, and that the Orchestrator folder is
+       set correctly. The human tasks are:
+           - Path A: Review Corrected Codes        (Medical Coder)
+           - Path B: Clinical Evidence Review      (Physician)
+           - Path D: Review Patient Outreach       (Patient Access Rep)
+       Assign each task to your own user for evaluation.
+
+  6.6  Confirm the Denial Path Router conditions:
+           denial_path == "A"  → Path A
+           denial_path == "B"  → Path B
+           denial_path == "D"  → Path D
+           denial_path == "E"  → Path E
+
+  6.7  Publish the case to Orchestrator.
+
+
+================================================================
+7.  RUN A CASE — RECOMMENDED DEMO WALKTHROUGH
+================================================================
+
+We recommend evaluating with Path B first (it exercises the full
+agent → human → submit → poll → outcome loop), then Path E (which
+shows the no-resubmission decision).
+
+  --- PATH B: Clinical Necessity (the $22,000 claim) ---
+
+  7.1  In Maestro, start a new instance of ARC_DeniedClaim with the
+       values for claim CLM-2024-002003 (see Section 8 / eobs.json):
+
+           claim_id            = CLM-2024-002003
+           carc_code           = CO-50
+           payer               = Blue Cross Blue Shield
+           patient_name        = Carol M. Steinberg
+           denial_reason       = Not deemed medically necessary
+           procedure_codes     = 43775
+           diagnosis_codes     = E66.01, E11.9, I10
+           billed_amount       = 22000
+           clinical_notes      = (use the matching note from the
+                                  clinical-notes test data)
+
+  7.2  Observe the flow:
+           - Denial Classification Agent → classifies as Path B
+           - Denial Path Router → routes to Clinical Necessity
+           - Clinical Evidence Agent → drafts the appeal letter
+
+  7.3  Open Orchestrator → Task Catalog → My Tasks. Open the
+       physician review task. Review the AI-drafted appeal letter.
+       Click "Approve & Sign".
+       (Or click "Request Changes" to send it back for regeneration.)
+
+  7.4  After approval:
+           - SubmitToPayer (RPA) submits the appeal
+           - The API status gateway confirms success
+           - A Timer Event waits, then the polling sequence begins
+
+  7.5  To resolve the outcome for the demo, force an approval:
+       In the API docs (http://localhost:8000/docs) call
+       POST /claim/status/override with:
+
+           { "claim_id": "CLM-2024-002003", "new_status": "approved" }
+
+       On the next poll, the case routes to the Approved branch and
+       sends the approval confirmation email. Claim recovered.
+
+  --- PATH E: Duplicate / Technical ---
+
+  7.6  Start a new instance with a Path E claim, e.g.:
+
+           claim_id      = CLM-2024-005001   (true duplicate)
+           carc_code     = CO-18
+
+       Observe: Billing Review Agent diagnoses a TRUE duplicate →
+       requires_resubmission = false → the case sends a
+       "No Duplicate Resubmission" notice and terminates. (No payer
+       submission — by design.)
+
+  7.7  (Optional) Run a technical-error Path E claim
+       (e.g. CLM-2024-005004) to see the resubmission branch fire,
+       which then follows the same submit → poll → outcome loop.
+
+  --- PATHS A & D (optional) ---
+
+  7.8  Path A (e.g. CLM-2024-001001, CO-4): Coding Correction Agent
+       → Medical Coder approval → submit → poll → outcome.
+
+  7.9  Path D (e.g. CLM-2024-004001, CO-27): Patient Outreach Agent
+       → Patient Access Rep review (Regenerate / Edit Manually /
+       Send) → outreach email sent.
+
+
+================================================================
+8.  TEST DATA REFERENCE
+================================================================
+
+All test data is synthetic — no real patient information (no PHI).
+
+  • test-data/eobs/eobs.json
+        20 denied claims spanning all denial types. Each includes
+        claim ID, patient, payer, date of service, CARC code,
+        billed amount, recommended fix, and filing deadline.
+
+  • test-data/clinical-notes/
+        Physician clinical notes used by the Clinical Evidence
+        Agent (Path B) to draft appeal letters.
+
+  • test-data/config/arc_config.json
+        CARC-code → denial-path mapping, payer filing deadlines,
+        and escalation thresholds.
+
+  Suggested claims by path:
+        Path A : CLM-2024-001001  (CO-4)
+        Path B : CLM-2024-002003  (CO-50, $22,000 — best demo)
+        Path D : CLM-2024-004001  (CO-27)
+        Path E : CLM-2024-005001  (CO-18, true duplicate)
+                 CLM-2024-005004  (CO-18, technical error → resubmit)
+
+
+================================================================
+9.  TROUBLESHOOTING
+================================================================
+
+  ISSUE: RPA API calls fail when run from Maestro, but work in
+         standalone Studio debug.
+  CAUSE: The executing robot cannot reach localhost.
+  FIX:   Run the process on a robot installed on the same machine
+         as the mock API, OR expose the API publicly (ngrok) and
+         update the endpoint. (See Section 5 note.)
+
+  ISSUE: A human task throws "Failure in the AppTasks request".
+  CAUSE: The User Task is missing a published Task Catalog form or
+         a linked Orchestrator folder.
+  FIX:   Confirm the Task Catalog form is published and that the
+         User Task node references it and the correct folder.
+
+  ISSUE: An agent debug run shows unresolved {{variables}}.
+  CAUSE: The Input panel was not populated before running.
+  FIX:   Provide input values in Agent Builder's Input panel before
+         running, or ensure Maestro maps the case variables into the
+         agent's inputs.
+
+  ISSUE: A claim's status never changes during polling.
+  CAUSE: The mock API auto-progresses only after 3 polls, weighted
+         by path recovery rate.
+  FIX:   Poll a few times, OR use POST /claim/status/override to set
+         the outcome directly for the demo.
+
+  ISSUE: The Maestro case won't start / agent or process not found.
+  CAUSE: An agent or RPA process is saved but not published, or is
+         published to a different folder.
+  FIX:   Publish all agents and processes to the same Orchestrator
+         folder the case uses, then re-select them on the canvas.
+
+
+================================================================
+For a full explanation of the architecture, agents, and paths,
+see README.md in the project root.
+
+ProjectARC — Autonomous Revenue Cycle.
+"Payers deny. ARC fights back."
+================================================================

@@ -1,0 +1,59 @@
+================================================================
+PROJECTARC — LIST OF AGENTS
+UiPath AgentHack 2026 | Track 1: Maestro Case
+================================================================
+
+ProjectARC uses FIVE LLM agents, all built in UiPath Agent Builder
+and powered by Claude. Each agent handles reasoning over
+unstructured information; deterministic actions (API calls, status
+polling) are handled separately by RPA, not by these agents.
+
+----------------------------------------------------------------
+
+1. Denial Classification Agent
+   Reads the denied claim's EOB and CARC code, then classifies the
+   denial into the correct resolution path (A, B, D, or E). Its
+   output drives the Denial Path Router — it is the agent every
+   claim passes through first.
+
+2. Coding Correction Agent  (Path A)
+   Handles coding-error denials. Identifies the specific coding
+   mistake (wrong modifier, unbundled codes, diagnosis-procedure
+   mismatch) and proposes corrected CPT/ICD codes for the medical
+   coder to review before resubmission.
+
+3. Clinical Evidence Agent  (Path B)
+   Handles clinical-necessity denials. Reads the physician's
+   clinical notes and drafts a complete, evidence-based appeal
+   letter — citing functional scores, failed conservative
+   treatments, and supporting documentation — for the physician
+   to review and sign.
+
+4. Patient Outreach Agent  (Path D)
+   Handles eligibility denials. Drafts a HIPAA-compliant outreach
+   message asking the patient to confirm or update their insurance
+   information, without disclosing clinical or financial details
+   beyond the minimum necessary.
+
+5. Billing Review Agent  (Path E)
+   Handles duplicate/technical denials. Diagnoses whether a
+   "duplicate" denial is a true duplicate (resolved by voiding, no
+   resubmission needed) or a disguised technical error (missing
+   modifier, NPI conflict, component split) that must be corrected
+   and resubmitted — and decides which action applies.
+
+----------------------------------------------------------------
+SUPPORTING (NON-AGENT) COMPONENTS — for reference
+----------------------------------------------------------------
+
+These are NOT agents; they are UiPath Studio RPA processes that
+perform deterministic actions the agents hand off to:
+
+   • SubmitToPayer ........... submits an appeal/resubmission to the
+                               payer system via API
+   • Appeal Status Polling ... polls the payer for the claim's
+                               current status (pending/approved/denied)
+   • Draft Outreach (Path D) . saves the patient outreach content as
+                               an editable mail draft
+
+================================================================

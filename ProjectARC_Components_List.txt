@@ -1,0 +1,90 @@
+================================================================
+PROJECTARC — LIST OF COMPONENTS USED
+UiPath AgentHack 2026 | Track 1: Maestro Case
+"Payers deny. ARC fights back."
+================================================================
+
+
+----------------------------------------------------------------
+UIPATH COMPONENTS
+----------------------------------------------------------------
+
+1. UiPath Maestro Case
+   The core orchestration layer of ProjectARC. Defines the denied-
+   claim case, the Denial Path Router, all exclusive gateways,
+   timer events, the asynchronous status-polling loops, and the
+   human task steps. Every claim runs as a single self-routing
+   case here.
+
+2. UiPath Agent Builder
+   Hosts the five LLM agents that perform all reasoning over
+   unstructured information:
+       - Denial Classification Agent
+       - Coding Correction Agent (Path A)
+       - Clinical Evidence Agent (Path B)
+       - Patient Outreach Agent (Path D)
+       - Billing Review Agent (Path E)
+   The agents are powered by Claude (Anthropic) as the LLM engine.
+
+3. UiPath Studio (RPA)
+   Builds the deterministic automation processes that the agents
+   and the case hand off to:
+       - SubmitToPayer (submits appeals/resubmissions via API)
+       - Appeal Status Polling (polls the payer for claim status)
+       - Draft Outreach (Path D — saves outreach as a mail draft)
+
+4. UiPath Orchestrator
+   Manages process publishing and execution, the Task Catalog
+   forms used for the human-in-the-loop review steps, queues,
+   scheduling, folders, and credentials.
+
+5. UiPath Task Catalog (App Tasks)
+   Provides the human review forms surfaced to the Medical Coder
+   (Path A), Physician (Path B), and Patient Access Rep (Path D)
+   at each human-in-the-loop checkpoint.
+
+
+----------------------------------------------------------------
+ADDITIONAL COMPONENTS / INTEGRATIONS
+----------------------------------------------------------------
+
+
+6. Python File — Mock Payer API (FastAPI)
+   A local API server (mock_payer_api.py) that simulates a real
+   insurance payer's claims system. Exposes endpoints for claim
+   status polling, appeal/resubmission, status override, and a
+   claims dashboard. Runs locally and is called by the RPA
+   processes to submit appeals and poll for outcomes.
+
+7. Cloudflare Tunnel — Public API Exposure
+   Exposes the locally hosted mock payer API to the internet so
+   the UiPath cloud-hosted robots can reach it, removing the
+   localhost-reachability limitation.
+   Public endpoint: http://api.projectarc.site/docs
+
+8. Email Notifications
+   Stakeholder notifications sent at each terminal outcome —
+   submission failure, final denial (with reason), and approval
+   (with claim details) — across Paths A, B, and E.
+
+
+----------------------------------------------------------------
+SUMMARY TABLE
+----------------------------------------------------------------
+
+  Component                  Type                Role
+  -------------------------  ------------------  ----------------------------
+  UiPath Maestro Case        UiPath              Core case orchestration
+  UiPath Agent Builder       UiPath              Hosts the 5 LLM agents
+  UiPath Studio (RPA)        UiPath              Deterministic automations
+  UiPath Orchestrator        UiPath              Publishing, tasks, queues
+  UiPath Task Catalog        UiPath              Human review forms
+  Claude (Anthropic)         Integration / LLM   Agent reasoning engine
+  Mock Payer API (Python)    Integration / API   Simulated payer system (local)
+  Cloudflare Tunnel          Integration         Public exposure of the API
+  Email Notifications        Integration         Stakeholder alerts on outcomes
+
+================================================================
+ProjectARC — Autonomous Revenue Cycle.
+"Payers deny. ARC fights back."
+================================================================
